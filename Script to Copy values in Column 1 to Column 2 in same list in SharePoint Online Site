@@ -1,0 +1,76 @@
+#Function to copy values from one column to another in a list
+Function Copy-SPOListColumnValues()
+{
+    Param
+    (
+        [Parameter(Mandatory=$true)] [string] $ListName,
+        [Parameter(Mandatory=$true)] [string] $SourceColumnName,
+        [Parameter(Mandatory=$true)] [string] $TargetColumnName
+    )
+    Try {
+        #Get All Items from the Source List in batches
+        Write-Progress -Activity "Reading Source..." -Status "Getting Items from Source List. Please wait..."
+        $ListItems = Get-PnPListItem -List $ListName -PageSize 2000
+         Write-host "Total Number of Items Found:"$ListItems.count
+  
+        #Get fields to Update from the Source List - Skip Read only, hidden fields, content type and attachments
+        $SourceField = Get-PnPField -List $ListName -Identity $SourceColumnName
+        $TargetField = Get-PnPField -List $ListName -Identity $TargetColumnName
+ 
+        #Loop through each item in the source and Get column values, add them to target column
+        [int]$Counter = 1
+        ForEach($ListItem in $ListItems)
+        { 
+            $ItemValue = @{}
+            #Check if the Field value is not Null
+            If($ListItem[$SourceField.InternalName] -ne $Null)
+            {
+                #Handle Special Fields
+                $FieldType  = $SourceField.TypeAsString
+  
+                If($FieldType -eq "User" -or $FieldType -eq "UserMulti" -or $FieldType -eq "Lookup" -or $FieldType -eq "LookupMulti") #People Picker or Lookup Field
+                {
+                    $LookupIDs = $ListItem[$SourceField.InternalName] | ForEach-Object { $_.LookupID.ToString()}
+                    $ItemValue.add($TargetField.InternalName,$LookupIDs)
+                }
+                ElseIf($FieldType -eq "URL") #Hyperlink
+                {
+                    $URL = $ListItem[$SourceField.InternalName].URL
+                    $Description  = $ListItem[$SourceField.InternalName].Description
+                    $ItemValue.add($TargetField.InternalName,"$URL, $Description")
+                }
+                ElseIf($FieldType -eq "TaxonomyFieldType" -or $FieldType -eq "TaxonomyFieldTypeMulti") #MMS
+                {
+                    $TermGUIDs = $ListItem[$SourceField.InternalName] | ForEach-Object { $_.TermGuid.ToString()}                   
+                    $ItemValue.add($TargetField.InternalName,$TermGUIDs)
+                }
+                Else
+                {
+                    #Get Source Field Value and add to Hashtable
+                    $ItemValue.add($TargetField.InternalName,$ListItem[$SourceField.InternalName])
+                }
+                Write-Progress -Activity "Copying List Items:" -Status "Copying Item ID '$($ListItem.Id)' from Source List ($($Counter) of $($ListItems.count))" -PercentComplete (($Counter / $ListItems.count) * 100)
+ 
+                #Copy column value from source to target
+                Set-PnPListItem -List $ListName -Identity $ListItem -Values $ItemValue | Out-Null
+  
+                Write-Host "Copied Values from Source to Target Column of Item '$($ListItem.Id)' ($($Counter) of $($ListItems.count)) "
+                $Counter++
+            }
+        }
+    }
+    Catch {
+        Write-host -f Red "Error:" $_.Exception.Message
+    }
+}
+ 
+#Set Parameter values
+$SiteURL  =  Read-Host -Prompt "Please Enter the Site Collection URL on which both the columns exits: "
+$ListName =  Read-Host -Prompt "Please Enter the List name on which both the columns exits: "
+#Source and Target column Internal Names
+$SourceColumnName = Read-Host -Prompt "Enter internal name of source column"
+$TargetColumnName = Read-Host -Prompt "Enter internal name of destination column"
+#Connect to PnP Online
+Connect-PnPOnline -Url $SiteURL -Interactive
+#Call the Function to copy sharepoint list column values from one to another
+Copy-SPOListColumnValues -ListName $ListName -SourceColumnName $SourceColumnName -TargetColumnName $TargetColumnName
