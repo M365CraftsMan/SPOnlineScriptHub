@@ -1,0 +1,18 @@
+<#
+.SYNOPSIS
+    This script designates the user, provided by UPN, as an admin for all sites in the SharePoint Online environment.
+.DESCRIPTION
+    The script connects to the SharePoint Online admin center, prompts for the admin's UPN, and designates the provided user as an admin for all sites.
+#>
+# Prompt for SharePoint Online admin center URL
+$spAdminCenterUrl = Read-Host -Prompt "Please enter the SharePoint Online admin center URL (e.g., https://yourtenant-admin.sharepoint.com)"
+# Prompt for admin UPN
+$adminUPN = Read-Host -Prompt "Enter your UPN"
+# Connect to SharePoint Online
+Connect-SPOService -Url $spAdminCenterUrl
+# Get all SharePoint Online sites
+$Sites = Get-SPOSite -Limit All
+# Loop through each site and set the provided user as a site collection admin
+foreach ($site in $Sites) {
+    Set-SPOUser -Site $site.Url -LoginName $adminUPN -IsSiteCollectionAdmin $true
+}
