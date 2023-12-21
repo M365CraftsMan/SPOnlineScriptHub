@@ -1,5 +1,5 @@
 # SPOnlineScriptHub
-👋 Hello! I'm M365CraftsMan, a passionate Technical Lead specializing in Microsoft 365 Cloud technologies. With a background in the Support Line of Business at Microsoft, I bring extensive expertise in solving complex issues and providing top-notch guidance for M365 Cloud solutions.
+👋 Hello! I'm M365CraftsMan, a passionate Technical Lead specializing in Microsoft 365 Cloud technologies. With a background in the Support Line of Business at Microsoft 365 Cloud Platform, I bring extensive expertise in solving complex issues and providing top-notch guidance for M365 Cloud solutions.
 
 🚀 My GitHub repositories showcase a collection of tools, scripts, and projects aimed at optimizing Microsoft 365 Cloud environments. From PowerShell scripts for SharePoint Online to automation solutions for Microsoft 365, my contributions aim to streamline workflows and enhance the overall experience for administrators and developers.
 
