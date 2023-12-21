@@ -1,0 +1,50 @@
+# Initialize an array to store information
+$Out = @()
+#making connection to SharePoint Online
+$spadmincenterurl = Read-Host -Prompt "Please enter SharePoint Online admin center for your environment in following format: https://yourtenant-admin.sharepoint.com"
+Connect-SPOService -Url $spadmincenterurl
+# Get all SharePoint Online sites including personal sites and export to CSV
+$Sites = Get-SPOSite -Limit All
+Write-Host "We found a total of "$sites.count "in your Environment"
+# Sort the sites by StorageUsageCurrent in descending order
+$Sites = $Sites | Sort-Object StorageUsageCurrent -Descending
+# Iterate through each site
+foreach ($Site in $Sites) {
+    # Connect to the SharePoint Online site
+    Connect-PnPOnline -Url $site.Url -Interactive
+
+    # Get site size information
+    $SiteSize = $Site.StorageUsageCurrent
+    $PHLib = Get-PnPList -Identity PreservationHoldLibrary
+
+    # Check if PreservationHoldLibrary exists
+    if ($PHLib) {
+        # Calculate PreservationHoldLibrary size in MB
+        $PHSize = ($PHLib | Measure-PnPList).TotalFileSize / 1024 / 1024
+    }
+    else {
+        # Continue to the next iteration if PreservationHoldLibrary doesn't exist
+        continue
+    }
+
+    # Continue to the next iteration if PreservationHoldLibrary size is zero
+    if (!$PHSize) {
+        continue
+    }
+
+    # Create a custom object to store site information
+    $item = [PSCustomObject]@{
+        Url                   = $site.Url
+        SiteSizeMB            = $SiteSize
+        PreservationSizeMB    = [math]::Round($PHSize)
+        PreservationPercentage= [math]::Round(($PHSize / $SiteSize) * 100)
+    }
+
+    # Output the custom object
+    $item
+
+    # Add the custom object to the array
+    $Out += $item
+}
+$outputfilepath = Read-Host -Prompt "Please enter the output file path and name with .csv extension."
+$Out | Export-Csv -Path $outputfilepath -NoTypeInformation
