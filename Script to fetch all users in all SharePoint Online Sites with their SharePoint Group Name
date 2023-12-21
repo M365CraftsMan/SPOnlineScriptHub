@@ -37,3 +37,4 @@ $userInfoArray | Export-Csv -Path $csvoutputfilepath -NoTypeInformation
 Disconnect-SPOService
 Write-Host "User information with groups exported to" $csvoutputfilepath
 Write-host "Script made by M365CraftsMan" -ForegroundColor White -BackgroundColor Green
+
