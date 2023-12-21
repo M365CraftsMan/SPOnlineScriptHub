@@ -1,0 +1,39 @@
+# Connect to SharePoint Online
+$sponlineadmincenterurl = Read-Host -Prompt "Please enter your SharEPoint Online Admin center URL in the following format: https://repro121-admin.sharepoint.com "
+Connect-SPOService -Url $sponlineadmincenterurl
+# Get all site collections
+$siteCollections = Get-SPOSite -Limit All
+# Array to store user information
+$userInfoArray = @()
+# Iterate through each site collection
+foreach ($siteCollection in $siteCollections) {
+    Write-Host "Processing Site Collection: $($siteCollection.Url)"
+
+    # Get all users for the site collection
+    $users = Get-SPOUser -Site $siteCollection.Url
+
+    # Collect user information
+    foreach ($user in $users) {
+        # Get groups for the user
+        $groups = Get-SPOSiteGroup -Site $siteCollection.Url | Where-Object { $_.Users -match $user.LoginName } | Select-Object -ExpandProperty Title
+
+        # Combine group names into a comma-separated string
+        $groupNames = ($groups) -join ', '
+
+        $userInfo = [PSCustomObject]@{
+            "SiteCollection" = $siteCollection.Url
+            "User"           = $user.LoginName
+            "Email"          = $user.Email
+            "Groups"         = $groupNames
+        }
+
+        $userInfoArray += $userInfo
+    }
+}
+# Export user information to CSV
+$csvoutputfilepath = Read-Host -Prompt "Please enter output file path including file name and extension."
+$userInfoArray | Export-Csv -Path $csvoutputfilepath -NoTypeInformation
+# Disconnect from SharePoint Online
+Disconnect-SPOService
+Write-Host "User information with groups exported to" $csvoutputfilepath
+Write-host "Script made by M365CraftsMan" -ForegroundColor White -BackgroundColor Green
