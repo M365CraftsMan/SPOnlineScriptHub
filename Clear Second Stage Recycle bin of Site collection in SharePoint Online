@@ -1,0 +1,33 @@
+<#
+Script Overview:
+This script is designed to clear the second-stage recycle bin for a list of site collections in SharePoint Online, which is stored in a CSV file.
+
+To run this script smoothly, set up an application in your Azure AD through App registration. Follow the steps in the article:
+https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+
+For authentication to SharePoint Online using this app, it's recommended to use the certificate method for better security. Refer to the article by LAURA KOKKARINEN for detailed steps:
+https://laurakokkarinen.com/authenticating-to-office-365-apis-with-a-certificate-step-by-step/
+#>
+
+# Azure AD Application Information
+$appId = "App ID of the Azure AD Application"
+$certPath = 'Path to private key'
+$tenant = 'MORD of your tenant'
+
+# Path to CSV file that contains the list of site collections
+$sitesCsvPath = "Path to the CSV file that contains the list of site collections for which you need to clear the recycle bin"
+
+# Import site collection URLs from the CSV file
+Import-CSV -LiteralPath $sitesCsvPath | ForEach-Object {
+
+    # Connect to SharePoint Online using the provided Azure AD application information
+    Connect-PnPOnline -Url $_.URL -ClientId $appId -CertificatePath $certPath -Tenant $tenant
+
+    # Get items from the second-stage recycle bin (limit to 500 items)
+    $items = Get-PnPRecycleBinItem -SecondStage -RowLimit 500
+
+    # Iterate through each item and clear it from the recycle bin
+    foreach ($item in $items) {
+        Clear-PnPRecycleBinItem -Identity $item -Force -WarningVariable $null -WarningAction Ignore
+    }
+}
