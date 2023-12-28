@@ -1,0 +1,64 @@
+# Connect to SharePoint Online Service
+$tenantadmincenterurl = Read-Host -Prompt "Please enter the URL of SharePoint Online admin center"
+
+Connect-SPOService -Url $tenantadmincenterurl
+
+# Inform the user about the script requirements
+Write-Host "Please note that this script requires you to have admin access to all SharePoint Online site collections in your tenant." -ForegroundColor White -BackgroundColor DarkRed
+Write-Host "For this, we will grant you access to all sites. At the end of this script, we will undo these changes." -ForegroundColor White -BackgroundColor DarkRed
+
+# Prompt for the script runner's User Principal Name
+$scriptRunner = Read-Host -Prompt "Please enter your User Principal Name."
+
+# Inform the user about fetching the list of all sites
+Write-Host "We are now fetching a list of all sites in your environment." -ForegroundColor White -BackgroundColor Yellow
+$sites = Get-SPOSite -Limit All
+
+# Inform the user about setting the script runner as a site admin on all sites
+Write-Host "We are now setting $scriptRunner as a site admin on all sites." -ForegroundColor White -BackgroundColor Yellow
+
+# Grant the script runner admin access to all sites
+foreach ($site in $sites) {
+    Set-SPOUser -Site $site.Url -LoginName $scriptRunner -IsSiteCollectionAdmin $true
+}
+
+# Inform the user about the successful task completion
+Write-Host "Task completed successfully. Let's Start." -ForegroundColor White -BackgroundColor Green
+
+# Prompt for the User Principal Name to search for
+$userUPN = Read-Host -Prompt "Please enter the User Principal Name of the user you are searching for."
+$outPath = Read-Host -Prompt "Please enter the output file path for the final report."
+
+# Start transcript for logging
+Start-Transcript -OutputDirectory $outPath
+
+# Iterate through sites to check user access
+foreach ($site in $sites) {
+    try {
+        $user = Get-SPOUser -Site $site.Url -LoginName $userUPN
+        Write-Host "User $userUPN has access to $($site.Url) as $($user.UserType)"
+    } catch {
+        # Handle exceptions if user not found or other issues
+    }
+}
+
+# Stop transcript
+Stop-Transcript
+
+# Inform the user about undoing changes made for the script runner as a site admin on all sites
+Write-Host "Undoing changes for $scriptRunner as a site admin on all sites." -ForegroundColor White -BackgroundColor Yellow
+
+# Undo changes by removing site admin access for the script runner on all sites
+foreach ($site in $sites) {
+    try {
+        Set-SPOUser -Site $site.Url -LoginName $scriptRunner -IsSiteCollectionAdmin $false
+    } catch {
+        # Handle exceptions if any
+    }
+}
+
+# Inform the user about the successful completion of the task
+Write-Host "Task completed successfully." -ForegroundColor White -BackgroundColor Blue
+
+# Display credits for the script author
+Write-Host "Script made by Ashutosh Jangid :)" -ForegroundColor White -BackgroundColor Green
