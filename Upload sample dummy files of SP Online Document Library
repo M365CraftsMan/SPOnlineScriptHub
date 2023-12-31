@@ -1,0 +1,60 @@
+<#
+                                                                      Prerequisites 
+PowerShell Version:
+
+Ensure that you have PowerShell installed on your machine. The script is compatible with PowerShell 5.1 and later versions.
+SharePoint PnP PowerShell Module:
+
+Install the SharePoint PnP PowerShell module. You can install it using the following command:
+Install-Module -Name Pnp.PowerShell
+
+SharePoint Online Credentials:
+Make sure you have the necessary credentials to connect to the SharePoint Online site. The script uses the -Interactive flag with Connect-PnPOnline, which means it will prompt you for credentials.
+
+Sample Dummy File:
+Have a sample dummy file on your local machine at the specified path. The script reads this file and uploads it multiple times to the SharePoint document library.
+
+Ensure that the account used to connect to SharePoint Online has the necessary permissions to upload files to the specified document library.
+Correct URL and Library Name:
+
+Provide the correct URL for the SharePoint Online site and ensure that the document library you specify exists on the site.
+Windows Environment:
+
+The script is designed for Windows environments. If you are using a different operating system, some commands may need adjustments.
+By meeting these prerequisites, you should be able to run the script successfully to upload the dummy file to the specified SharePoint Online document library.
+
+#>
+
+
+# Parameters
+$SiteURL = Read-Host -Prompt "Enter the URL of your destination site"
+$LocalFile = Read-Host -Prompt "Enter the sample file path for the dummy file on your local machine (e.g., C:\users\username\desktop\Dummy.docx)"
+$MaxFilesCount = Read-Host -Prompt "Enter the number of files you wish to add (integer value only)"
+
+# Get the file
+$File = Get-ChildItem $LocalFile
+
+# Connect to PnP Online
+Connect-PnPOnline -Url $SiteURL -Interactive
+
+# Choose the document library
+$DocumentLibrary = Get-PnPList | Where-Object { $_.BaseType -eq "DocumentLibrary" }
+$LibraryName = Read-Host -Prompt "Enter the name of the library you wish to add files to"
+
+# Get the specified library
+$Library = Get-PnPList -Identity $LibraryName
+
+# Add files to the library
+$FileCounter = 1
+While ($FileCounter -le $MaxFilesCount) {
+    $NewFileName = $File.BaseName + "_" + $FileCounter + ".docx"
+    Try {
+        Add-PnPFile -Path $File -Folder $LibraryName -NewFileName $NewFileName | Out-Null
+        Write-Host -ForegroundColor Green "New File '$NewFileName' Created ($FileCounter of $MaxFilesCount)!"
+    }
+    Catch {
+        Write-Host -ForegroundColor White -BackgroundColor Red "Error: $($_.Exception.Message)"
+    }
+    $FileCounter++
+}
+Write-Host "This script is written by Ashutosh Jangid. Check out more at https://github.com/M365CraftsMan/SPOnlineScriptHub"
