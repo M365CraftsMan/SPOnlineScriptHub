@@ -31,3 +31,4 @@ Import-CSV -LiteralPath $sitesCsvPath | ForEach-Object {
         Clear-PnPRecycleBinItem -Identity $item -Force -WarningVariable $null -WarningAction Ignore
     }
 }
+Write-Host "Script made by Ashutosh Jangid :)" -ForegroundColor White -BackgroundColor Green
