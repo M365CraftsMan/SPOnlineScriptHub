@@ -1,0 +1,39 @@
+<#
+Script Overview:
+This PowerShell script is designed to set one user as the recipient of access request emails for all site collections in SharePoint Online.
+
+Before running this script, set up an application in your Azure AD through App registration. Follow the steps in the article:
+https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+
+For authentication to SharePoint Online using this app, it's recommended to use the certificate method for better security. Refer to the article by LAURA KOKKARINEN for detailed steps:
+https://laurakokkarinen.com/authenticating-to-office-365-apis-with-a-certificate-step-by-step/
+#>
+
+# Get Azure AD Application Information
+$appId = Read-Host -Prompt "Enter App ID of the Azure AD Application"
+$certPath = Read-Host -Prompt 'Enter Path to private key'
+$tenant = Read-Host -Prompt 'Enter Microsoft Online Registered Domain of your tenant'
+$spAdminCenterUrl = Read-Host -Prompt "Enter SharePoint Online Admin Center URL"
+$userUPN = Read-Host -Prompt "Enter the UPN of the user you want to set to receive the access request emails"
+
+# Connect to SharePoint Online Admin Center
+Connect-PnPOnline -Url $spAdminCenterUrl -ClientId $appId -CertificatePath $certPath
+
+# Get a list of all site collections in the tenant
+$sites = Get-PnPTenantSite
+
+# Loop through each site collection
+foreach ($site in $sites) {
+    # Connect to individual site collection
+    Connect-PnPOnline -Url $site.Url -ClientId $appId -CertificatePath $certPath
+
+    # Set the specified user to receive access request emails
+    Set-PnPRequestAccessEmails -Emails @($userUPN)
+
+    # Disconnect from the current site collection
+    Disconnect-PnPOnline
+}
+
+# Disconnect from SharePoint Online Admin Center
+Disconnect-PnPOnline
+
