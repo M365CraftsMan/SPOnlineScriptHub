@@ -1,0 +1,28 @@
+# Prompt for SharePoint Online admin center URL and output CSV file path
+$spAdminCenter = Read-Host -Prompt "Enter the URL for SharePoint Online admin center: "
+$outputFilePath = Read-Host -Prompt "Enter the file path for the output CSV file"
+
+# Connect to SharePoint Online using Modern Authentication
+Connect-SPOService -Url $spAdminCenter -ModernAuth $true
+
+# Array to store site storage data
+$storageData = @()
+
+# Retrieve OneDrive sites with specific template
+$sites = Get-SPOSite -Limit All -Template "SPSPERS#10" -IncludePersonalSite $true
+
+# Loop through each site and gather storage information
+foreach ($site in $sites) {
+    $storageData += New-Object PSObject -Property @{
+        "Storage Quota in MB" = $site.StorageQuota
+        "Storage Consumed in MB" = $site.StorageUsageCurrent
+        "Site URL" = $site.Url
+        "Site Owner" = $site.Owner
+    }
+}
+
+# Export the storage data to a CSV file
+$storageData | Export-Csv -Path $outputFilePath -NoTypeInformation
+Write-Host "This script is written by Ashutosh Jangid. Check out more at https://github.com/M365CraftsMan/SPOnlineScriptHub"
+# Inform the user that the script execution is complete
+Write-Host "Script execution completed. Storage data exported to: $outputFilePath"
