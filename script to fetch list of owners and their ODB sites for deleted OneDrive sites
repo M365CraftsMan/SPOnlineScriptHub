@@ -1,0 +1,75 @@
+<#
+Initialization:
+
+The script starts by specifying the URL of the SharePoint admin center ($SPadmincenterURL).
+Array for Output:
+
+An empty array ($output) is created to store information about the deleted sites.
+Connect to SharePoint (Optional):
+
+There is a commented line (Connect-SPOService) that can be uncommented if Modern Authentication is required to connect to SharePoint Online. This line is currently commented out as it might not be necessary in all scenarios.
+Get Deleted Sites:
+
+The script retrieves information about all deleted sites, including only personal sites ($deletesites = Get-SPODeletedSite -Limit All -IncludeOnlyPersonalSite).
+Loop Through Deleted Sites:
+
+The script then enters a foreach loop to iterate through each deleted site.
+Restore Deleted Site:
+
+It restores the deleted site using Restore-SPODeletedSite -Identity $deletedsite.Url.
+Get Site Details:
+
+Retrieves details of the restored site using Get-SPOSite -Identity $deletedsite.Url.
+Create Custom Object for Output:
+
+A custom PowerShell object ($ADS) is created to store relevant details such as URL and Owner of the restored site.
+Add Object to Output Array:
+
+The custom object is added to the $output array.
+Remove Restored Site:
+
+The script removes the restored site using Remove-SPOSite -Identity $deletedsite.Url -Confirm:$false, skipping the confirmation prompt.
+Display Output:
+
+Finally, the script displays the collected output in a table format using Format-Table -AutoSize.
+This script is designed to restore and gather information about deleted personal sites in SharePoint Online, including the URL and owner details, and then permanently remove them without confirmation prompts. It is essential to use this script cautiously, especially the removal part, to avoid unintended data loss.
+#>
+
+
+# Specify the SharePoint admin center URL
+$SPadmincenterURL = Read-Host -Prompt "Enter SP admin center URL: "
+$outputfilepath = Read-Host -Prompt "Enter output path for CSV file: 
+Note: Include file and extension in the file path
+"
+
+$output = @()
+
+# Uncomment the line below if you need to connect to SharePoint Online with Modern Authentication
+# Connect-SPOService -Url $SPadmincenterURL -ModernAuth $true
+
+# Get all deleted sites, including only personal sites
+$deletesites = Get-SPODeletedSite -Limit All -IncludeOnlyPersonalSite
+
+# Iterate through each deleted site
+foreach ($deletedsite in $deletesites) {
+    # Restore the deleted site
+    Restore-SPODeletedSite -Identity $deletedsite.Url
+
+    # Get details of the restored site
+    $sitedetails = Get-SPOSite -Identity $deletedsite.Url
+
+    # Create a custom object with site details for output
+    $ADS = [PSCustomObject]@{
+        "URL"   = $deletedsite.Url
+        "Owner" = $sitedetails.Owner
+    }
+
+    # Add the custom object to the output array
+    $output += $ADS
+
+    # Remove the restored site without confirmation prompt
+    Remove-SPOSite -Identity $deletedsite.Url -Confirm:$false
+}
+
+# Display the output
+$output | Export-Csv -Path $outputfilepath -NoTypeInformation
