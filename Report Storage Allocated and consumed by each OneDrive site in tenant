@@ -1,0 +1,35 @@
+# Warning: Test this script in a non-production environment before using in production.
+# Prompt user for SharePoint Admin Center URL
+$SPadmincenterURL = Read-Host -Prompt "Enter SP Admin center URL:"
+# Connect to SharePoint Online service using Modern Authentication
+Connect-SPOService -Url $SPadmincenterURL -ModernAuth $true
+# Set default report filename
+$ReportFilename = "OneDriveSiteConsumption.CSV"
+# Prompt user for the destination path for the output file
+$reportFilePath = Read-Host -Prompt "Enter the destination path for the output file: "
+$fullPath = Join-Path -Path $reportFilePath -ChildPath $ReportFilename
+# Get all OneDrive for Business sites with personal sites included
+$ODFBSites = Get-SPOSite -IncludePersonalSite $True -Limit All -Template SPSPers#10 |
+    Select-Object Owner, Title, URL, StorageQuota, StorageUsageCurrent |
+    Sort-Object StorageUsageCurrent -Descending
+# Calculate the total OneDrive for Business storage used in gigabytes
+$TotalODFBGBUsed = [Math]::Round(($ODFBSites.StorageUsageCurrent | Measure-Object -Sum).Sum / 1024, 2)
+# Create an array to store site data for the report
+$Report = @()
+# Iterate through each OneDrive for Business site
+foreach ($Site in $ODFBSites) {
+    Write-Host "Working on site: "$site.Url
+    $ReportLine = [PSCustomObject]@{
+        Owner   = $Site.Title
+        Email   = $Site.Owner
+        URL     = $Site.URL
+        QuotaGB = [Math]::Round($Site.StorageQuota / 1024, 2)
+        UsedGB  = [Math]::Round($Site.StorageUsageCurrent / 1024, 4)
+    }
+    $Report += $ReportLine
+}
+Write-Host "This script is written by Ashutosh Jangid. Check out more at https://github.com/M365CraftsMan/SPOnlineScriptHub" -f White -B DarkGreen
+# Export the report to a CSV file
+$Report | Export-Csv -NoTypeInformation -Path $fullPath
+# Display a message indicating the completion of the script
+Write-Host "Report is saved to" $fullPath
