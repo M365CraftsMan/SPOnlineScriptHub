@@ -11,7 +11,7 @@ Write-Host "Note: This script will temporarily set your account as a Site admin 
 $scriptrunnerupn = Read-Host -Prompt "Enter your UPN: "
 
 # Get all SharePoint Online sites, including personal sites, and export to CSV
-$Sites = Get-SPOSite -Limit All -IncludePersonalSite $true -Filter {URL -like "my.sharepoint.com"}
+$Sites = Get-SPOSite -Limit All
 Write-Host "Total sites found in your environment: $($sites.count)"
 
 # Sort the sites by StorageUsageCurrent in descending order
