@@ -1,47 +1,41 @@
 # Initialize an array to store information
 $Out = @()
-#making connection to SharePoint Online
-$spadmincenterurl = Read-Host -Prompt "Please enter SharePoint Online admin center for your environment in following format: https://yourtenant-admin.sharepoint.com"
+
+# Making connection to SharePoint Online
+$spadmincenterurl = Read-Host -Prompt "Please enter SharePoint Online admin center for your environment (format: https://yourtenant-admin.sharepoint.com)"
 Connect-SPOService -Url $spadmincenterurl
-Write-Host "Note: this script will set your account as a Site admin for all site collection and then will proceed to remove your access once the task is completed." -f White -B Red
+
+# Display a notice about the script's actions
+Write-Host "Note: This script will temporarily set your account as a Site admin for all site collections and then remove your access once the task is completed." -ForegroundColor White -BackgroundColor Red
+
 $scriptrunnerupn = Read-Host -Prompt "Enter your UPN: "
-# Get all SharePoint Online sites including personal sites and export to CSV
-$Sites = Get-SPOSite -Limit All
-Write-Host "We found a total of "$sites.count "in your Environment"
+
+# Get all SharePoint Online sites, including personal sites, and export to CSV
+$Sites = Get-SPOSite -Limit All -IncludePersonalSite $true -Filter {URL -like "my.sharepoint.com"}
+Write-Host "Total sites found in your environment: $($sites.count)"
+
 # Sort the sites by StorageUsageCurrent in descending order
 $Sites = $Sites | Sort-Object StorageUsageCurrent -Descending
+
 # Iterate through each site
 foreach ($Site in $Sites) {
-    Set-SPOUser -LoginName $scriptrunnerupn -Site $Site.url -IsSiteCollectionAdmin $true | Out-Null
+    # Set the script runner as a Site Collection Admin temporarily
+    Set-SPOUser -LoginName $scriptrunnerupn -Site $Site.url -IsSiteCollectionAdmin $true | Out-Null  
     
     # Connect to the SharePoint Online site
     Connect-PnPOnline -Url $site.Url -UseWebLogin | Out-Null
 
     # Get site size information
     $SiteSize = $Site.StorageUsageCurrent
-    $PHLib = Get-PnPList -Identity PreservationHoldLibrary
-
-    # Check if PreservationHoldLibrary exists
-    if ($PHLib) {
-        # Calculate PreservationHoldLibrary size in MB
-        $PHSize = ($PHLib | Measure-PnPList).TotalFileSize / 1024 / 1024
-    }
-    else {
-        # Continue to the next iteration if PreservationHoldLibrary doesn't exist
-        continue
-    }
-
-    # Continue to the next iteration if PreservationHoldLibrary size is zero
-    if (!$PHSize) {
-        continue
-    }
+    $PHLib = Get-PnPList -Identity "PreservationHoldLibrary"
+    $PHS = Measure-PnPList -Identity "PreservationHoldLibrary"
+    $PHSize = $PHS.TotalFileSize / 1024 / 1024
 
     # Create a custom object to store site information
     $item = [PSCustomObject]@{
         Url                   = $site.Url
         SiteSizeMB            = $SiteSize
         PreservationSizeMB    = [math]::Round($PHSize)
-        PreservationPercentage= [math]::Round(($PHSize / $SiteSize) * 100)
     }
 
     # Output the custom object
@@ -50,8 +44,13 @@ foreach ($Site in $Sites) {
     # Add the custom object to the array
     $Out += $item
 
+    # Remove the script runner as a Site Collection Admin
     Set-SPOUser -LoginName $scriptrunnerupn -Site $Site.url -IsSiteCollectionAdmin $false | Out-Null
 }
+
+# Get the output file path from the user
 $outputfilepath = Read-Host -Prompt "Please enter the output file path and name with .csv extension."
+
+# Export the array to a CSV file
 $Out | Export-Csv -Path $outputfilepath -NoTypeInformation
 Write-Host "This script is written by Ashutosh Jangid. Check out more at https://github.com/M365CraftsMan/SPOnlineScriptHub"
