@@ -3,6 +3,9 @@ $Out = @()
 #making connection to SharePoint Online
 $spadmincenterurl = Read-Host -Prompt "Please enter SharePoint Online admin center for your environment in following format: https://yourtenant-admin.sharepoint.com"
 Connect-SPOService -Url $spadmincenterurl
+$scriptrunnerupn = Read-Host -Prompt "Enter your UPN: 
+Note: this script will set your account as a Site admin for all site collection and then will proceed to remove your access once the task is completed.
+"
 # Get all SharePoint Online sites including personal sites and export to CSV
 $Sites = Get-SPOSite -Limit All
 Write-Host "We found a total of "$sites.count "in your Environment"
@@ -10,8 +13,10 @@ Write-Host "We found a total of "$sites.count "in your Environment"
 $Sites = $Sites | Sort-Object StorageUsageCurrent -Descending
 # Iterate through each site
 foreach ($Site in $Sites) {
+    Set-SPOUser -LoginName $scriptrunnerupn -Site $Site.url -IsSiteCollectionAdmin $true    
+    
     # Connect to the SharePoint Online site
-    Connect-PnPOnline -Url $site.Url -Interactive
+    Connect-PnPOnline -Url $site.Url -UseWebLogin
 
     # Get site size information
     $SiteSize = $Site.StorageUsageCurrent
@@ -45,6 +50,9 @@ foreach ($Site in $Sites) {
 
     # Add the custom object to the array
     $Out += $item
+
+    Set-SPOUser -LoginName $scriptrunnerupn -Site $Site.url -IsSiteCollectionAdmin $false
 }
 $outputfilepath = Read-Host -Prompt "Please enter the output file path and name with .csv extension."
 $Out | Export-Csv -Path $outputfilepath -NoTypeInformation
+Write-Host "This script is written by Ashutosh Jangid. Check out more at https://github.com/M365CraftsMan/SPOnlineScriptHub"
