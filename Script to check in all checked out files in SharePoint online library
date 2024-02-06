@@ -1,0 +1,37 @@
+# Prompt user for Site URL
+$siteurl = Read-Host -Prompt "Enter Site URL"
+Connect-PnPOnline -Url $siteurl -Interactive
+
+# Prompt user for the name of the library
+$listname = Read-Host -Prompt "Enter the name of Library"
+
+# Prompt user for the path of the CSV file
+$testfilepath = Read-Host -Prompt "Enter the path of the CSV file"
+
+# Initialize an array to store checked-out files
+$CheckedOutFiles = @()
+
+# Retrieve all checked-out files from the specified library
+$FilesCheckedOut = Get-PnPListItem -List $listname -PageSize 500 | Where {$_["CheckoutUser"] -ne $Null}
+
+Write-Host "Processing Library: $listname" -ForegroundColor Yellow
+
+# Collect data from each checked-out file
+ForEach ($File in $FilesCheckedOut)
+{
+    $CheckedOutFiles += [PSCustomObject][ordered]@{
+        FileName        = $File.FieldValues.FileLeafRef
+        CheckedOutTo    = $File.FieldValues.CheckoutUser.LookupValue
+        Location        = $File.FieldValues.FileRef
+    }
+}
+
+# Export the collected data to a CSV file
+$CheckedOutFiles | Export-Csv -Path $testfilepath -NoTypeInformation
+
+# Check in each file and add a comment
+Import-Csv -Path $testfilepath | ForEach-Object {
+    Set-PnPFileCheckedIn -Url $_.Location -CheckinType MajorCheckIn -Comment "Done via Script"
+}
+
+Write-Host "Script execution completed successfully." -ForegroundColor Green
