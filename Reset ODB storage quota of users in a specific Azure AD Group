@@ -1,0 +1,36 @@
+# Prompt the user to enter the SharePoint Admin Center URL
+$SPadmincenterurl = Read-Host -Prompt "Enter SP Admin Center URL: "
+
+# Prompt the user to enter the Object ID of Azure AD Group
+$GroupobjectID = Read-Host -Prompt "Enter Object ID of Azure AD Group: "
+
+# Prompt the user to enter the URL of the My Site Host in the specified format
+$mysitehostURL = Read-Host -Prompt "Enter the URL of my site Host in the following Format https://tenantname-my.sharepoint.com/personal/ "
+
+# Connect to Azure Active Directory and suppress the output
+Connect-AzureAD | Out-Null
+
+# Connect to SharePoint Online service using the provided Admin Center URL and enabling Modern Authentication
+Connect-SPOService -Url $SPadmincenterurl -ModernAuth $true
+
+# Retrieve the members of the specified Azure AD Group
+$users = Get-AzureADGroupMember -ObjectId $GroupobjectID
+
+# For each user in the group
+$users | ForEach-Object {
+    # Extract the user's email address
+    $email = $_.UserPrincipalName
+    
+    # Replace any characters in the email address that are not alphanumeric with underscores
+    $newEmail = [regex]::Replace($email, "[^\w\d]", "_")
+    
+    # Construct the URL for the user's site based on the My Site Host URL and the modified email address
+    $prefix = $mysitehostURL
+    $SiteURL = $prefix + $newEmail
+    
+    # Output the action about to be performed on the site URL
+    Write-Host "Performing action on" $SiteURL -ForegroundColor White -BackgroundColor Green
+    
+    # Reset the storage quota for the site
+    Set-SPOSite -Identity $SiteURL -StorageQuotaReset
+}
