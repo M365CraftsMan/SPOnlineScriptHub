@@ -1,0 +1,29 @@
+#Note: 
+# 1. This script will remove the unique permissions from all items in a folder in a Document Library.
+# 2. Upon first prompt enter the site url of the site collection or subsite
+# 3. On second prompt enter the name of document library
+# 4. on line number 17 and char 107 you need to replace "Enter folder parent path here" with parent folder path
+# Do remember to mention the 
+
+#Parameters
+$SiteURL = Read-Host -Prompt "Enter Site URL"
+$listname = Read-Host -Prompt "Enter Library name"
+#Connect to the Site
+Connect-PnPOnline -URL $SiteURL -Interactive
+#Get the Folder - with HasUniqueAssignments and ParentList properties
+
+$list = Get-PnPList -Identity $listname
+
+$items = Get-PnPListItem -List $listname -PageSize 200 | Where-Object { $_.FieldValues["FileDirRef"] -like "*Enter folder parent path here*" }
+
+$totalItems = $items.Count
+
+$currentItemIndex = 0
+foreach ($item in $items) {
+    Write-Progress -Activity "Setting permissions" -Status "Processing item $($currentItemIndex + 1) of $totalItems" -PercentComplete (($currentItemIndex / $totalItems) * 100)
+
+    Write-Host $item.Id
+    Set-PnPListItemPermission -List $listname -Identity $item.Id -InheritPermissions
+    $currentItemIndex++
+}
+Write-Progress -Activity "Setting permissions" -Status "Completed" -Completed
