@@ -3,7 +3,6 @@
 # 2. Upon first prompt enter the site url of the site collection or subsite
 # 3. On second prompt enter the name of document library
 # 4. on line number 17 and char 107 you need to replace "Enter folder parent path here" with parent folder path
-# Do remember to mention the 
 
 #Parameters
 $SiteURL = Read-Host -Prompt "Enter Site URL"
