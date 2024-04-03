@@ -1,0 +1,23 @@
+##Use at your own risk in Prod
+##
+Write-Host "This Script will display a list of redirect Sites in your environment and will prompt you to delete these from Prod and Recycle Bin both"
+$spadminurl = Read-Host -Prompt "Enter SP Admin center URL: "
+Connect-SPOService $spadminurl -ModernAuth $true
+$sites = Get-SPOSite -Limit All -IncludePersonalSite:$true
+Write-Host "There are" $sites.Count "sites in your environment"
+$RDSites = Get-SPOSite -Limit All -IncludePersonalSite $true -Template RedirectSite#0
+$abc = $RDSites.count
+Write-Host "There are" $RDSites.Count " redirect sites in your environment" -f Yellow
+$consent1 = Read-Host -Prompt "Do you want to delete the redirect sites. If you choose N then this will only display the URL of each redirect site and will not delete them. Answer in Y/N" 
+$currentItemIndex = 0
+$RDSites | ForEach-Object{
+    if ($_.template -eq 'RedirectSite#0'){
+        Write-Host $_.Url $_.Template
+        if($consent1 -eq 'Y'){ 
+                Write-Progress -Activity "Deleting redirects" -Status "Processing Item" $($currentItemIndex+1) -PercentComplete (($currentItemIndex / $abc) * 100 )
+                Write-Host "Deleting this Site" -f Red -b White
+                Remove-SPOSite -Identity $_.url -Confirm:$false -NoWait
+                }
+        }
+    $currentItemIndex++
+}
