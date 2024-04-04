@@ -1,0 +1,23 @@
+$spadminurl = Read-Host -Prompt "Enter SP Admin center URL: "
+$userUPN = Read-Host -Prompt "Enter USer UPN: "
+Connect-SPOService -Url $spadminurl -ModernAuth $true
+$sites = Get-SPOSite -Limit All
+Write-Host "Found" $sites.Count "Sites in your environment"
+Write-Host "This script assumes that you are added as Site Admin on all sites in your environment. If you first want to add yourself as admin then select Y/N accordingly: " -f red -b White
+$consent = Read-Host -Prompt "Do you want to set yourself as admin on all sites first Y/N: "
+if($consent -eq 'Y'){
+    $adminupn = Read-Host -Prompt "Enter your UPN: "
+    foreach($site in $sites){
+        Set-SPOUser -Site $site.url -LoginName $adminupn -IsSiteCollectionAdmin $true | Out-Null
+    }
+}
+$sites | ForEach-Object {
+    try {
+        Write-Host "Working on: " $_.Url
+        Remove-SPOUser -Site $_.Url -LoginName $userupn -ErrorAction Stop
+    }
+    catch {
+        Write-Host "Error occurred while processing site: " $_.Url
+        Write-Host "Error message: " $_.Exception.Message
+    }
+}
