@@ -1,0 +1,48 @@
+$siteurl = Read-Host -Prompt "Enter the Site URL"
+$listname = Read-Host -Prompt "Enter the name of the list"
+$outfilepath = Read-Host -Prompt "Enter the sameple output file path as mentioned C:\Users\ashu3\OneDrive\Desktop\Gaurav45.csv"
+$Comment = Read-Host -Prompt "Enter the comment that you want to be displayed on the file version history: "
+
+$filesCollection = @()
+Connect-PnPOnline -Url $siteUrl -Interactive
+
+$Ctx = Get-PnPContext
+write-host  $siteUrl  
+Get-PnPList -Identity $listname | ForEach-Object {
+$CheckedOutFiles = $_.GetCheckedOutFiles()
+$Ctx.Load($CheckedOutFiles)
+$Ctx.ExecuteQuery()
+$CheckedOutFiles | ForEach-Object {
+
+        $user = (Get-PnPUser -Identity $_.CheckedoutById -ErrorAction Ignore) #?? $_.CheckedoutById
+        $ExportVw = New-Object PSObject
+        $ExportVw | Add-Member -MemberType NoteProperty -name "Site URL" -value $siteUrl
+        $ExportVw | Add-Member -MemberType NoteProperty -name "FileUrl" -value $_.ServerRelativePath.DecodedUrl
+        $ExportVw | Add-Member -MemberType NoteProperty -name "Checked Out By" -value $user.Title
+        $ExportVw | Add-Member -MemberType NoteProperty -name "No Checked in version" -value "Yes"
+        $filesCollection += $ExportVw
+    }
+ 
+$alldocs = (Get-PnPListItem -List $_  -PageSize 1000 | where-object{ $null -ne $_.FieldValues.CheckoutUser} )
+ 
+$alldocs | ForEach-Object {
+        $ExportVw = New-Object PSObject
+        $ExportVw | Add-Member -MemberType NoteProperty -name "Site URL" -value $siteUrl
+        $ExportVw | Add-Member -MemberType NoteProperty -name "FileUrl" -value $_.FieldValues.FileRef
+        $ExportVw | Add-Member -MemberType NoteProperty -name "Checked Out By" -value $_.FieldValues.CheckoutUser.LookupValue
+        $ExportVw | Add-Member -MemberType NoteProperty -name "No Checked in version" -value "No"
+        $filesCollection += $ExportVw
+  }
+ }
+
+$filesCollection | sort-object "FileUrl" |Export-CSV $outfilepath -NoTypeInformation
+Get-PnPList -Identity $listname | ForEach-Object {
+$CheckedOutFiles = $_.GetCheckedOutFiles()
+$Ctx.Load($CheckedOutFiles)
+$Ctx.ExecuteQuery()
+$CheckedOutFiles | ForEach-Object {
+$_.TakeOverCheckOut()
+}}
+Import-Csv -Path $outfilepath | ForEach-Object {
+Set-PnPFileCheckedIn -Url $_.FileUrl -CheckinType MajorCheckIn -Comment $Comment
+}
