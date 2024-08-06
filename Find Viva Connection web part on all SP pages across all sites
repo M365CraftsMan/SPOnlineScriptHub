@@ -1,0 +1,40 @@
+$spadmin = Read-host -prompt "Enter SharePoint Online admin center url: "
+
+# Connect to SharePoint Online service
+Connect-SPOService -Url $spadmin -ModernAuth:$True
+
+# Retrieve all site collections
+$sites = Get-SPOSite -Limit All
+$totalsitescount = $sites.Count
+$i = 1
+
+# Iterate through each site collection
+ForEach($site in $sites) {
+    Write-Host "Working on site collection " $i " of " $totalsitescount
+
+    Try {
+        # Connect to each site collection using PnP PowerShell
+        Connect-PnPOnline -Url $site.Url -UseWebLogin -WarningAction Ignore
+
+        # Retrieve all pages from the "Site Pages" library
+        $pages = Get-PnPListItem -List "Site Pages"
+
+        # Iterate through each page
+        foreach ($page in $pages) {
+            Try {
+                # Get page content as a string
+                $pageContent = Get-PnPFile -Url $page.FieldValues["FileRef"] -AsString
+
+                # Check if the page contains the "Viva Connection" web part
+                if ($pageContent -like "*Viva Connection*") {
+                    Write-Host "Viva Connection web part found in site: $($site.Url), Page: $($page.FieldValues["FileLeafRef"])" -b Green -f White
+                }
+            } Catch {
+                # Handle errors (if any) for individual pages
+            }
+        }
+    } Catch {
+        # Handle errors (if any) for connecting to a site
+    }
+    $i++
+}
