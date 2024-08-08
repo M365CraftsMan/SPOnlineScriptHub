@@ -1,0 +1,30 @@
+# Import SharePoint Online Management Shell
+Import-Module Microsoft.Online.SharePoint.PowerShell -DisableNameChecking
+
+# Variables
+$SiteURL = Read-Host -Prompt "Enter site url here"
+
+# Setup Credentials to connect
+$Cred = Get-Credential
+$Credentials = New-Object Microsoft.SharePoint.Client.SharePointOnlineCredentials($Cred.Username, $Cred.Password)
+
+# Setup the context
+$Ctx = New-Object Microsoft.SharePoint.Client.ClientContext($SiteURL)
+$Ctx.Credentials = $Credentials
+
+# Get Site Collection Features
+
+#Get Site Collection Features
+$SiteCollFeatures = $Ctx.Site.Features
+$Ctx.Load($SiteCollFeatures)
+$Ctx.ExecuteQuery()           
+ 
+#Loop through each feature and get feature data
+Write-host "Site Collection Features:"
+ForEach($Feature in $SiteCollFeatures)
+{
+    $Feature.Retrieve("DisplayName")
+    $Ctx.Load($Feature)
+    $Ctx.ExecuteQuery()
+    $Feature | Select DisplayName, DefinitionId
+}
