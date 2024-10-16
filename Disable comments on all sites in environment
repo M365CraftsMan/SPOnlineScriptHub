@@ -1,0 +1,35 @@
+$admincenter = Read-host -prompt "Please enter SharePoint Admin center URL"
+Connect-SPOService -Url $admincenter -ModernAuth:$true
+ 
+$outputpath = Read-host -prompt "Please the destination file path along with .csv extension. Please remember to enter the path in double quotes"
+ 
+# Try-Catch block to handle any errors while fetching SharePoint sites
+try {
+    # Export site data to CSV
+    Get-SPOSite -Limit All | Export-Csv -Path $outputpath -NoTypeInformation
+    Write-Host "SharePoint site collection data has been successfully exported to $outputpath"
+} catch {
+    Write-Host "An error occurred while fetching SharePoint sites: $_" -ForegroundColor Red
+    Exit
+}
+ 
+Start-Sleep -Seconds 10
+ 
+# Wait for user confirmation
+$proceed = Read-Host -Prompt "Make adjustments to the CSV file. Once done, press 'Y' and Enter to proceed."
+ 
+if ($proceed -eq 'Y') {
+    # Process each site URL in the CSV
+    try {
+        Import-Csv -Path $outputpath | ForEach-Object {
+            Connect-PnPOnline -Url $_.Url -UseWebLogin -ErrorAction SilentlyContinue
+            Set-PnPSite -Identity $_.Url -CommentsOnSitePagesDisabled $true
+            Write-Host "Comments on the site " $_.Url "are now disabled" -ForegroundColor White -BackgroundColor Green
+            Start-Sleep -Seconds 1
+        }
+    } catch {
+        Write-Host "An error occurred while processing the sites: $_" -ForegroundColor Red
+    }
+} else {
+    Write-Host "Your input is not valid"
+}
