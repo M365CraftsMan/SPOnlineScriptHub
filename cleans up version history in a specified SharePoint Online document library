@@ -1,0 +1,90 @@
+<#
+.SYNOPSIS
+This script cleans up version history in a specified SharePoint Online document library, retaining only a specified number of versions per file.
+
+.DESCRIPTION
+Using PnP PowerShell, this script connects to a SharePoint Online site, retrieves all files in a document library, and removes older versions beyond a defined limit. It ensures the latest major version is retained.
+
+.PARAMETER SiteURL
+The URL of the SharePoint Online site.
+
+.PARAMETER ListName
+The name of the document library.
+
+.PARAMETER VersionsToKeep
+The number of versions to retain for each file.
+
+.NOTES
+Author: [Your Name]
+Date: [Date]
+License: MIT
+Version: 1.0
+
+#>
+
+# Parameters
+param (
+    [string]$SiteURL = "https://example.sharepoint.com/sites/SiteName",
+    [string]$ListName = "Documents",
+    [int]$VersionsToKeep = 5
+)
+
+# Connect to PnP Online
+Write-Host "Connecting to SharePoint Online..." -ForegroundColor Yellow
+Connect-PnPOnline -Url $SiteURL -UseWebLogin
+
+# Get the Document Library
+$List = Get-PnPList -Identity $ListName
+
+# Get the Context
+$Ctx = Get-PnPContext
+
+$global:counter = 0
+
+# Get All Items from the List - Get 'Files'
+Write-Host "Retrieving files from the document library..." -ForegroundColor Yellow
+$ListItems = Get-PnPListItem -List $ListName -Fields FileLeafRef -PageSize 2000 -ScriptBlock {
+    Param($items)
+    $global:counter += $items.Count
+    Write-Progress `
+        -PercentComplete ($global:Counter / ($List.ItemCount) * 100) `
+        -Activity "Getting Files of '$($List.Title)'" `
+        -Status "Processing Files $global:Counter of $($List.ItemCount)"
+} | Where-Object { $_.FileSystemObjectType -eq "File" }
+Write-Progress -Activity "Completed Retrieving Files!" -Completed
+
+$TotalFiles = $ListItems.Count
+$Counter = 1
+
+# Process Each File
+foreach ($Item in $ListItems) {
+    # Get File Versions
+    $File = $Item.File
+    $Versions = $File.Versions
+    $Ctx.Load($File)
+    $Ctx.Load($Versions)
+    $Ctx.ExecuteQuery()
+
+    Write-Host -ForegroundColor Yellow "Scanning File ($Counter of $TotalFiles): $($Item.FieldValues.FileRef)"
+    $VersionsCount = $Versions.Count
+    $VersionsToDelete = $VersionsCount - $VersionsToKeep
+    if ($VersionsToDelete -gt 0) {
+        Write-Host -ForegroundColor Cyan "`t Total Number of Versions of the File: $VersionsCount"
+        $VersionCounter = 0
+        # Delete versions
+        for ($i = 0; $i -lt $VersionsToDelete; $i++) {
+            if ($Versions[$VersionCounter].IsCurrentVersion) {
+                $VersionCounter++
+                Write-Host -ForegroundColor Magenta "`t`t Retaining Current Major Version: $($Versions[$VersionCounter].VersionLabel)"
+                continue
+            }
+            Write-Host -ForegroundColor Cyan "`t Deleting Version: $($Versions[$VersionCounter].VersionLabel)"
+            $Versions[$VersionCounter].DeleteObject()
+        }
+        $Ctx.ExecuteQuery()
+        Write-Host -ForegroundColor Green "`t Version History is cleaned for the File: $($File.Name)"
+    }
+    $Counter++
+}
+
+Write-Host "Script completed successfully!" -ForegroundColor Green
