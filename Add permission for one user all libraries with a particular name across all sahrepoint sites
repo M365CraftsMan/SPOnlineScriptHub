@@ -1,0 +1,64 @@
+# WARNING: TEST THIS SCRIPT IN A NON-PRODUCTION ENVIRONMENT BEFORE DEPLOYMENT
+# This script retrieves all SharePoint Online sites, checks for a specific list name,
+# and, if found, modifies its permissions before exporting the results to a CSV file.
+
+# Prompt user for input
+$spadminurl = Read-Host "Enter SharePoint Admin URL (e.g., https://yourtenant-admin.sharepoint.com)"
+$adminupn = Read-Host "Enter Admin UPN (e.g., admin@yourtenant.onmicrosoft.com)"
+$enduserupn = Read-Host "Enter End User UPN (e.g., user@yourtenant.onmicrosoft.com)"
+$listname = Read-Host "Enter the name of the list to search for"
+$outputFile = Read-Host "Enter the output CSV file path (e.g., C:\temp\SOW_Sites.csv)"
+
+# Connect to SharePoint Online Admin Center
+Connect-SPOService -Url $spadminurl -ModernAuth:$true
+
+# Get all sites
+$sites = Get-SPOSite -Limit All
+Write-Host "Total sites found: " $sites.Count -ForegroundColor White -BackgroundColor Green
+
+# Initialize array to store matching sites
+$matchingSites = @()
+
+# Loop through each site
+$sites | ForEach-Object {
+    $siteUrl = $_.Url
+    
+    try {
+        # Grant site collection admin rights to ensure permissions
+        Set-SPOUser -Site $siteUrl -LoginName $adminupn -IsSiteCollectionAdmin $true
+
+        # Connect to site
+        Connect-PnPOnline -Url $siteUrl -UseWebLogin
+        
+        # Check if the list exists
+        $list = Get-PnPList -Identity $listname -ErrorAction SilentlyContinue
+        
+        if ($list -ne $null) {
+            Write-Host "List found on site: $siteUrl" -ForegroundColor White -BackgroundColor Green
+            
+            # Set unique permissions on the list
+            Write-Host "Setting up unique permission on list..." -ForegroundColor White -BackgroundColor Green
+            Set-PnPList -Identity $listname -BreakRoleInheritance -CopyRoleAssignments
+            Set-PnPListPermission -Identity $listname -User $enduserupn -AddRole Read
+            
+            # Add site and list name to array
+            $matchingSites += [PSCustomObject]@{
+                SiteURL = $siteUrl
+                ListName = $list.Title
+            }
+        } else {
+            Write-Host "List not found on site: $siteUrl" -ForegroundColor White -BackgroundColor Red
+        }
+    }
+    catch {
+        Write-Host "Error on site $siteUrl: $($_.Exception.Message)" -ForegroundColor Red -BackgroundColor DarkRed
+    }
+}
+
+# Export matching sites and list names to CSV
+if ($matchingSites.Count -gt 0) {
+    $matchingSites | Export-Csv -Path $outputFile -NoTypeInformation
+    Write-Host "Export completed. File saved at: $outputFile" -ForegroundColor Green
+} else {
+    Write-Host "No sites found with the specified list." -ForegroundColor Yellow
+}
