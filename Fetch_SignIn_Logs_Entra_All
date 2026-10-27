@@ -1,0 +1,176 @@
+<#
+.SYNOPSIS
+    Exports Entra ID sign-in logs with every property Graph returns, for up to the last 30 days.
+
+.DESCRIPTION
+    - Uses the Graph BETA endpoint, because v1.0 returns interactive sign-ins only.
+    - Event types: interactiveUser, nonInteractiveUser, servicePrincipal, managedIdentity.
+    - Pulls in time chunks, oldest first, so data near the 30-day retention edge is captured before it ages out.
+    - Output per event type:
+        <type>.ndjson : one raw JSON record per line. Lossless; this is the full-detail copy.
+        <type>.csv    : flattened. Nested objects become dotted columns (deviceDetail.isManaged,
+                        location.city, status.errorCode ...). Arrays (appliedConditionalAccessPolicies,
+                        authenticationDetails, etc.) are stored as compact JSON strings in one cell.
+    - Retries throttling (429) and transient errors with backoff.
+
+.REQUIREMENTS
+    - PowerShell 7+, Microsoft.Graph.Authentication module
+    - Tenant licensed for Entra ID P1/P2 (sign-in logs via API need it)
+    - Permissions: AuditLog.Read.All, Directory.Read.All
+
+.EXAMPLE
+    .\Export-EntraSignInLogs.ps1
+    .\Export-EntraSignInLogs.ps1 -Days 7 -EventTypes interactiveUser,nonInteractiveUser
+    .\Export-EntraSignInLogs.ps1 -ChunkHours 4          # big tenants: smaller windows
+    .\Export-EntraSignInLogs.ps1 -SkipCsv               # JSON only (fastest)
+#>
+[CmdletBinding()]
+param(
+    [ValidateRange(1, 30)]
+    [int]$Days = 30,
+
+    [ValidateSet('interactiveUser', 'nonInteractiveUser', 'servicePrincipal', 'managedIdentity')]
+    [string[]]$EventTypes = @('interactiveUser', 'nonInteractiveUser', 'servicePrincipal', 'managedIdentity'),
+
+    [ValidateRange(1, 24)]
+    [int]$ChunkHours = 24,
+
+    [string]$OutDir = (Join-Path (Get-Location) ("SignInExport_" + (Get-Date -Format 'yyyyMMdd_HHmm'))),
+
+    [switch]$SkipCsv,
+
+    [switch]$UseManagedIdentity   # for Azure Automation runbooks
+)
+
+$ErrorActionPreference = 'Stop'
+
+#region Connect
+if (-not (Get-Module -ListAvailable Microsoft.Graph.Authentication)) {
+    throw "Microsoft.Graph.Authentication module not found. Install-Module Microsoft.Graph -Scope CurrentUser"
+}
+if ($UseManagedIdentity) {
+    Connect-MgGraph -Identity -NoWelcome
+} else {
+    Connect-MgGraph -Scopes 'AuditLog.Read.All', 'Directory.Read.All' -NoWelcome
+}
+$ctx = Get-MgContext
+Write-Host "Connected to tenant $($ctx.TenantId) as $($ctx.Account ?? $ctx.ClientId)" -ForegroundColor Cyan
+#endregion
+
+New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+
+#region Helpers
+function Invoke-GraphWithRetry {
+    param([string]$Uri, [int]$MaxAttempts = 7)
+    for ($i = 1; $i -le $MaxAttempts; $i++) {
+        try {
+            return Invoke-MgGraphRequest -Method GET -Uri $Uri -OutputType PSObject -ErrorAction Stop
+        } catch {
+            $msg = $_.Exception.Message
+            # Don't retry errors that won't fix themselves
+            if ($msg -match '403|Forbidden|Authorization_RequestDenied|premium license|InvalidLicense|400|BadRequest') {
+                throw "Non-retryable Graph error: $msg"
+            }
+            if ($i -eq $MaxAttempts) { throw "Giving up after $MaxAttempts attempts: $msg" }
+            $wait = [math]::Min(300, [math]::Pow(2, $i) * 5)
+            Write-Warning "Attempt $i failed: $msg  -> retrying in $wait s"
+            Start-Sleep -Seconds $wait
+        }
+    }
+}
+
+function ConvertTo-FlatHashtable {
+    param($Object, [string]$Prefix = '', [hashtable]$Result = @{})
+    foreach ($p in $Object.PSObject.Properties) {
+        $key = if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }
+        $v = $p.Value
+        if ($null -eq $v) {
+            $Result[$key] = $null
+        } elseif ($v -is [datetime]) {
+            $Result[$key] = $v.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        } elseif ($v -is [System.Management.Automation.PSCustomObject]) {
+            ConvertTo-FlatHashtable -Object $v -Prefix $key -Result $Result | Out-Null
+        } elseif ($v -is [System.Collections.IEnumerable] -and $v -isnot [string]) {
+            $arr = @($v)
+            $Result[$key] = if ($arr.Count -eq 0) { '' } else { ConvertTo-Json -InputObject $arr -Depth 20 -Compress }
+        } else {
+            $Result[$key] = $v
+        }
+    }
+    $Result
+}
+#endregion
+
+$runEnd   = (Get-Date).ToUniversalTime()
+$runStart = $runEnd.AddDays(-$Days)
+$summary  = [System.Collections.Generic.List[object]]::new()
+
+foreach ($type in $EventTypes) {
+    $ndjson = Join-Path $OutDir "$type.ndjson"
+    $writer = [System.IO.StreamWriter]::new($ndjson, $false, [System.Text.UTF8Encoding]::new($false))
+    $total  = 0
+    Write-Host "`n=== $type ===" -ForegroundColor Yellow
+
+    try {
+        # Oldest chunk first: that data is closest to falling out of retention
+        $chunkStart = $runStart
+        while ($chunkStart -lt $runEnd) {
+            $chunkEnd = $chunkStart.AddHours($ChunkHours)
+            if ($chunkEnd -gt $runEnd) { $chunkEnd = $runEnd }
+
+            $s = $chunkStart.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $e = $chunkEnd.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $filter = "createdDateTime ge $s and createdDateTime lt $e and signInEventTypes/any(t: t eq '$type')"
+            $uri = "https://graph.microsoft.com/beta/auditLogs/signIns?`$filter=$([uri]::EscapeDataString($filter))&`$top=999"
+
+            $chunkCount = 0
+            while ($uri) {
+                $resp = Invoke-GraphWithRetry -Uri $uri
+                foreach ($rec in @($resp.value)) {
+                    $writer.WriteLine((ConvertTo-Json -InputObject $rec -Depth 20 -Compress))
+                    $chunkCount++
+                }
+                $uri = $resp.'@odata.nextLink'
+            }
+            $writer.Flush()
+            $total += $chunkCount
+            Write-Host ("  {0} -> {1} : {2,8:N0} records (running total {3:N0})" -f $s, $e, $chunkCount, $total)
+            $chunkStart = $chunkEnd
+        }
+    } finally {
+        $writer.Dispose()
+    }
+
+    # Flatten to CSV: pass 1 collects every column that appears, pass 2 writes rows in a fixed column order
+    if (-not $SkipCsv -and $total -gt 0) {
+        Write-Host "  Flattening to CSV..." -ForegroundColor Cyan
+        $csv  = Join-Path $OutDir "$type.csv"
+        $keys = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($line in [System.IO.File]::ReadLines($ndjson)) {
+            if (-not $line) { continue }
+            (ConvertTo-FlatHashtable -Object ($line | ConvertFrom-Json)).Keys | ForEach-Object { [void]$keys.Add($_) }
+        }
+        $lead = @('createdDateTime', 'userPrincipalName', 'userDisplayName', 'appDisplayName', 'ipAddress',
+                  'status.errorCode', 'status.failureReason', 'conditionalAccessStatus',
+                  'deviceDetail.operatingSystem', 'deviceDetail.isManaged', 'deviceDetail.isCompliant') |
+                Where-Object { $keys.Contains($_) }
+        $cols = @($lead) + @($keys | Where-Object { $_ -notin $lead } | Sort-Object)
+
+        [System.IO.File]::ReadLines($ndjson) | Where-Object { $_ } | ForEach-Object {
+            $flat = ConvertTo-FlatHashtable -Object ($_ | ConvertFrom-Json)
+            $row = [ordered]@{}
+            foreach ($c in $cols) { $row[$c] = $flat[$c] }
+            [pscustomobject]$row
+        } | Export-Csv -Path $csv -NoTypeInformation -Encoding utf8
+
+        if ($total -gt 1048575) {
+            Write-Warning "  $type has $total rows, more than Excel's row limit. Use Power BI, Power Query, or the NDJSON."
+        }
+    }
+
+    $summary.Add([pscustomobject]@{ EventType = $type; Records = $total; Folder = $OutDir })
+}
+
+Write-Host "`nDone. Window: $($runStart.ToString('u')) -> $($runEnd.ToString('u'))" -ForegroundColor Green
+$summary | Format-Table -AutoSize
+$summary | Export-Csv (Join-Path $OutDir '_summary.csv') -NoTypeInformation
